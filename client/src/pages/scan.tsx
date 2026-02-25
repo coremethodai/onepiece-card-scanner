@@ -100,6 +100,13 @@ export default function Scan() {
     fetchData();
   }, []);
 
+  const getDocId = useCallback((card: CatalogCard) => {
+    if ((card as any)._docId) return (card as any)._docId as string;
+    if (!card.is_alt_art) return `${card.card_id}-standard`;
+    if (card.alt_art_number && card.alt_art_number > 1) return `${card.card_id}-alt${card.alt_art_number}`;
+    return `${card.card_id}-alt`;
+  }, []);
+
   const handleImageSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -208,13 +215,6 @@ export default function Scan() {
     const matchesType = !selectedType || card.type === selectedType;
     return matchesSearch && matchesRarity && matchesType;
   });
-
-  const getDocId = useCallback((card: CatalogCard) => {
-    if ((card as any)._docId) return (card as any)._docId as string;
-    if (!card.is_alt_art) return `${card.card_id}-standard`;
-    if (card.alt_art_number && card.alt_art_number > 1) return `${card.card_id}-alt${card.alt_art_number}`;
-    return `${card.card_id}-alt`;
-  }, []);
 
   const handleAddToCollection = useCallback(
     async (card: CatalogCard) => {
