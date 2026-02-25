@@ -20,7 +20,7 @@ export async function registerRoutes(
       const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
       const mimeType = image.match(/^data:(image\/\w+);base64,/)?.[1] || "image/jpeg";
 
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       const result = await model.generateContent([
         {
@@ -57,7 +57,10 @@ If you cannot identify the card, respond with:
       return res.json(cardData);
     } catch (error: any) {
       console.error("Scan error:", error.message);
-      return res.status(500).json({ error: "Failed to analyze card image" });
+      const msg = error.message?.includes("404")
+        ? "AI model unavailable. Please try again shortly."
+        : "Failed to analyze card image. Please try again.";
+      return res.status(500).json({ error: msg });
     }
   });
 
