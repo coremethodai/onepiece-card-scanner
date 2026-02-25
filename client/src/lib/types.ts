@@ -4,6 +4,8 @@ export interface CatalogCard {
   rarity: string;
   type: string;
   is_alt_art: boolean;
+  alt_art_number?: number;
+  set_name?: string;
 }
 
 export interface ScannedCard {
@@ -12,6 +14,8 @@ export interface ScannedCard {
   rarity: string;
   type: string;
   is_alt_art: boolean;
+  alt_art_number?: number;
+  set_name?: string;
   scanned_at: string;
   quantity: number;
 }

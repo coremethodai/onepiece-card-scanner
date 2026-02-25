@@ -82,9 +82,10 @@ export default function Scan() {
           getDocs(collection(db, "My_Collection")),
         ]);
 
-        const catalog = catalogSnap.docs.map(
-          (d) => ({ ...d.data() } as CatalogCard)
-        );
+        const catalog = catalogSnap.docs.map((d) => ({
+          ...d.data(),
+          _docId: d.id,
+        })) as (CatalogCard & { _docId: string })[];
         setCatalogCards(catalog);
 
         const ids = new Set<string>();
@@ -145,8 +146,7 @@ export default function Scan() {
   const handleAddScanResult = useCallback(async () => {
     if (!scanResult) return;
 
-    const suffix = scanResult.is_alt_art ? "alt" : "standard";
-    const docId = `${scanResult.card_id}-${suffix}`;
+    const docId = getDocId(scanResult);
     setAddingId(docId);
 
     try {
@@ -189,7 +189,7 @@ export default function Scan() {
     } finally {
       setAddingId(null);
     }
-  }, [scanResult, toast]);
+  }, [scanResult, toast, getDocId]);
 
   const clearScan = () => {
     setPreviewImage(null);
@@ -209,10 +209,16 @@ export default function Scan() {
     return matchesSearch && matchesRarity && matchesType;
   });
 
+  const getDocId = useCallback((card: CatalogCard) => {
+    if ((card as any)._docId) return (card as any)._docId as string;
+    if (!card.is_alt_art) return `${card.card_id}-standard`;
+    if (card.alt_art_number && card.alt_art_number > 1) return `${card.card_id}-alt${card.alt_art_number}`;
+    return `${card.card_id}-alt`;
+  }, []);
+
   const handleAddToCollection = useCallback(
     async (card: CatalogCard) => {
-      const suffix = card.is_alt_art ? "alt" : "standard";
-      const docId = `${card.card_id}-${suffix}`;
+      const docId = getDocId(card);
       setAddingId(docId);
 
       try {
@@ -226,8 +232,10 @@ export default function Scan() {
             description: `Added another copy of ${card.name} (${card.card_id})`,
           });
         } else {
+          const { ...cardData } = card;
+          delete (cardData as any)._docId;
           const scannedCard: ScannedCard = {
-            ...card,
+            ...cardData,
             scanned_at: new Date().toISOString(),
             quantity: 1,
           };
@@ -253,7 +261,7 @@ export default function Scan() {
         setAddingId(null);
       }
     },
-    [toast]
+    [toast, getDocId]
   );
 
   const clearFilters = () => {
@@ -420,15 +428,11 @@ export default function Scan() {
                       </div>
                       <Button
                         onClick={handleAddScanResult}
-                        disabled={
-                          addingId ===
-                          `${scanResult.card_id}-${scanResult.is_alt_art ? "alt" : "standard"}`
-                        }
+                        disabled={addingId === getDocId(scanResult)}
                         className="w-full sm:w-auto"
                         data-testid="button-add-scan-result"
                       >
-                        {addingId ===
-                        `${scanResult.card_id}-${scanResult.is_alt_art ? "alt" : "standard"}` ? (
+                        {addingId === getDocId(scanResult) ? (
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                         ) : (
                           <Plus className="h-4 w-4 mr-2" />
@@ -568,8 +572,7 @@ export default function Scan() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {filteredCards.map((card, i) => {
-                  const suffix = card.is_alt_art ? "alt" : "standard";
-                  const docId = `${card.card_id}-${suffix}`;
+                  const docId = getDocId(card);
                   const isInCollection = scannedIds.has(docId);
                   const isAdding = addingId === docId;
 
@@ -612,6 +615,11 @@ export default function Scan() {
                           <span className="text-xs text-muted-foreground">
                             {card.type}
                           </span>
+                          {card.set_name && (
+                            <span className="text-xs text-muted-foreground/60 truncate max-w-[120px]">
+                              {card.set_name.replace(/^.*?-\s*/, "").replace(/\s*\[.*\]/, "")}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <Button
