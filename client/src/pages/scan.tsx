@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   collection,
   getDocs,
@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import {
   Search,
   ScanLine,
@@ -24,6 +25,10 @@ import {
   Check,
   Filter,
   X,
+  Camera,
+  Upload,
+  Loader2,
+  ImageIcon,
 } from "lucide-react";
 
 const RARITY_COLORS: Record<string, string> = {
@@ -43,6 +48,14 @@ function getRarityClass(rarity: string) {
 const RARITY_OPTIONS = ["C", "UC", "R", "SR", "SEC", "L", "SP"];
 const TYPE_OPTIONS = ["CHARACTER", "EVENT", "STAGE", "LEADER"];
 
+interface ScanResult {
+  card_id: string;
+  name: string;
+  rarity: string;
+  type: string;
+  is_alt_art: boolean;
+}
+
 export default function Scan() {
   const [catalogCards, setCatalogCards] = useState<CatalogCard[]>([]);
   const [scannedIds, setScannedIds] = useState<Set<string>>(new Set());
@@ -51,6 +64,14 @@ export default function Scan() {
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [addingId, setAddingId] = useState<string | null>(null);
+
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+
   const { toast } = useToast();
 
   useEffect(() => {
@@ -62,7 +83,7 @@ export default function Scan() {
         ]);
 
         const catalog = catalogSnap.docs.map(
-          (doc) => ({ ...doc.data() } as CatalogCard)
+          (d) => ({ ...d.data() } as CatalogCard)
         );
         setCatalogCards(catalog);
 
@@ -77,6 +98,106 @@ export default function Scan() {
     }
     fetchData();
   }, []);
+
+  const handleImageSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      setScanResult(null);
+      setScanError(null);
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string;
+        setPreviewImage(dataUrl);
+      };
+      reader.readAsDataURL(file);
+    },
+    []
+  );
+
+  const handleScanImage = useCallback(async () => {
+    if (!previewImage) return;
+
+    setScanning(true);
+    setScanResult(null);
+    setScanError(null);
+
+    try {
+      const res = await apiRequest("POST", "/api/scan-card", {
+        image: previewImage,
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        setScanError(data.error);
+      } else {
+        setScanResult(data);
+      }
+    } catch (err: any) {
+      setScanError("Failed to scan card. Please try again.");
+    } finally {
+      setScanning(false);
+    }
+  }, [previewImage]);
+
+  const handleAddScanResult = useCallback(async () => {
+    if (!scanResult) return;
+
+    const suffix = scanResult.is_alt_art ? "alt" : "standard";
+    const docId = `${scanResult.card_id}-${suffix}`;
+    setAddingId(docId);
+
+    try {
+      const docRef = doc(db, "My_Collection", docId);
+      const existing = await getDoc(docRef);
+
+      if (existing.exists()) {
+        await updateDoc(docRef, { quantity: increment(1) });
+        toast({
+          title: "Quantity Updated",
+          description: `Added another copy of ${scanResult.name} (${scanResult.card_id})`,
+        });
+      } else {
+        const scannedCard: ScannedCard = {
+          ...scanResult,
+          scanned_at: new Date().toISOString(),
+          quantity: 1,
+        };
+        await setDoc(docRef, scannedCard);
+        setScannedIds((prev) => {
+          const next = new Set(Array.from(prev));
+          next.add(docId);
+          return next;
+        });
+        toast({
+          title: "Card Added",
+          description: `${scanResult.name} (${scanResult.card_id}) added to your collection!`,
+        });
+      }
+
+      setScanResult(null);
+      setPreviewImage(null);
+    } catch (err) {
+      console.error("Error adding card:", err);
+      toast({
+        title: "Error",
+        description: "Failed to add card. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setAddingId(null);
+    }
+  }, [scanResult, toast]);
+
+  const clearScan = () => {
+    setPreviewImage(null);
+    setScanResult(null);
+    setScanError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+  };
 
   const filteredCards = catalogCards.filter((card) => {
     const matchesSearch =
@@ -147,6 +268,7 @@ export default function Scan() {
     return (
       <div className="p-6 space-y-6" data-testid="scan-loading">
         <Skeleton className="h-10 w-64 rounded-lg" />
+        <Skeleton className="h-48 rounded-lg" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <Skeleton key={i} className="h-24 rounded-lg" />
@@ -160,13 +282,204 @@ export default function Scan() {
     <div className="p-6 space-y-5">
       <div className="flex items-center gap-3 mb-2">
         <ScanLine className="h-7 w-7 text-primary" />
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-scan-title">
+        <h1
+          className="text-2xl font-bold tracking-tight"
+          data-testid="text-scan-title"
+        >
           Scan Cards
         </h1>
       </div>
 
+      <Card data-testid="card-scanner">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Camera className="h-5 w-5" />
+            AI Card Scanner
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!previewImage ? (
+            <div className="flex flex-col items-center justify-center py-8 border-2 border-dashed border-muted-foreground/20 rounded-lg">
+              <ImageIcon className="h-12 w-12 text-muted-foreground/30 mb-4" />
+              <p className="text-sm text-muted-foreground mb-4">
+                Take a photo or upload an image of your card
+              </p>
+              <div className="flex items-center gap-3 flex-wrap justify-center">
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={handleImageSelect}
+                  data-testid="input-camera"
+                />
+                <Button
+                  onClick={() => cameraInputRef.current?.click()}
+                  data-testid="button-camera"
+                >
+                  <Camera className="h-4 w-4 mr-2" />
+                  Take Photo
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageSelect}
+                  data-testid="input-upload"
+                />
+                <Button
+                  variant="secondary"
+                  onClick={() => fileInputRef.current?.click()}
+                  data-testid="button-upload"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload Image
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="relative w-full sm:w-48 shrink-0">
+                  <img
+                    src={previewImage}
+                    alt="Card preview"
+                    className="w-full rounded-lg border object-contain max-h-64"
+                    data-testid="img-preview"
+                  />
+                </div>
+
+                <div className="flex-1 space-y-3">
+                  {scanning && (
+                    <div
+                      className="flex items-center gap-3 p-4 rounded-lg bg-primary/5 border border-primary/20"
+                      data-testid="scan-analyzing"
+                    >
+                      <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                      <div>
+                        <p className="text-sm font-medium">Analyzing card...</p>
+                        <p className="text-xs text-muted-foreground">
+                          Using AI to identify your card
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {scanError && (
+                    <div
+                      className="p-4 rounded-lg bg-destructive/10 border border-destructive/20"
+                      data-testid="scan-error"
+                    >
+                      <p className="text-sm text-destructive font-medium">
+                        {scanError}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Try taking a clearer photo or uploading a different
+                        image.
+                      </p>
+                    </div>
+                  )}
+
+                  {scanResult && (
+                    <div
+                      className="p-4 rounded-lg bg-primary/5 border border-primary/20 space-y-3"
+                      data-testid="scan-result"
+                    >
+                      <p className="text-sm font-semibold text-primary">
+                        Card Identified!
+                      </p>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-base font-bold">
+                            {scanResult.card_id}
+                          </span>
+                          {scanResult.is_alt_art && (
+                            <Badge variant="outline" className="text-xs">
+                              ALT ART
+                            </Badge>
+                          )}
+                        </div>
+                        <p
+                          className="text-lg font-semibold"
+                          data-testid="text-scan-result-name"
+                        >
+                          {scanResult.name}
+                        </p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge
+                            className={`text-xs ${getRarityClass(scanResult.rarity)}`}
+                          >
+                            {scanResult.rarity}
+                          </Badge>
+                          <span className="text-sm text-muted-foreground">
+                            {scanResult.type}
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        onClick={handleAddScanResult}
+                        disabled={
+                          addingId ===
+                          `${scanResult.card_id}-${scanResult.is_alt_art ? "alt" : "standard"}`
+                        }
+                        className="w-full sm:w-auto"
+                        data-testid="button-add-scan-result"
+                      >
+                        {addingId ===
+                        `${scanResult.card_id}-${scanResult.is_alt_art ? "alt" : "standard"}` ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Plus className="h-4 w-4 mr-2" />
+                        )}
+                        Add to Collection
+                      </Button>
+                    </div>
+                  )}
+
+                  {!scanning && !scanResult && !scanError && (
+                    <p className="text-sm text-muted-foreground">
+                      Click "Identify Card" to analyze this image with AI.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 flex-wrap">
+                {!scanResult && (
+                  <Button
+                    onClick={handleScanImage}
+                    disabled={scanning}
+                    data-testid="button-identify"
+                  >
+                    {scanning ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <ScanLine className="h-4 w-4 mr-2" />
+                    )}
+                    Identify Card
+                  </Button>
+                )}
+                <Button
+                  variant="secondary"
+                  onClick={clearScan}
+                  data-testid="button-clear-scan"
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Clear
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
-        <CardContent className="pt-5 space-y-4">
+        <CardHeader>
+          <CardTitle className="text-lg">Browse Catalog</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -231,94 +544,97 @@ export default function Scan() {
               </Button>
             )}
           </div>
-        </CardContent>
-      </Card>
 
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground" data-testid="text-results-count">
-          Showing {filteredCards.length} of {catalogCards.length} cards
-        </p>
-      </div>
-
-      <ScrollArea className="h-[calc(100vh-380px)]">
-        {filteredCards.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Search className="h-16 w-16 text-muted-foreground/40 mb-4" />
-            <h3 className="text-lg font-semibold text-muted-foreground">
-              No cards found
-            </h3>
-            <p className="text-sm text-muted-foreground/70 mt-1">
-              Try adjusting your search or filters.
+          <div className="flex items-center justify-between">
+            <p
+              className="text-sm text-muted-foreground"
+              data-testid="text-results-count"
+            >
+              Showing {filteredCards.length} of {catalogCards.length} cards
             </p>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {filteredCards.map((card, i) => {
-              const suffix = card.is_alt_art ? "alt" : "standard";
-              const docId = `${card.card_id}-${suffix}`;
-              const isInCollection = scannedIds.has(docId);
-              const isAdding = addingId === docId;
 
-              return (
-                <div
-                  key={`${docId}-${i}`}
-                  className={`flex items-center gap-3 p-3 rounded-md border transition-colors ${
-                    isInCollection
-                      ? "bg-primary/5 border-primary/20"
-                      : "bg-card"
-                  }`}
-                  data-testid={`card-catalog-${docId}`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-sm font-semibold">
-                        {card.card_id}
-                      </span>
-                      {card.is_alt_art && (
-                        <Badge variant="outline" className="text-xs">
-                          ALT
-                        </Badge>
-                      )}
-                      {isInCollection && (
-                        <Check className="h-4 w-4 text-primary" />
-                      )}
-                    </div>
-                    <p
-                      className="text-sm truncate mt-0.5"
-                      data-testid={`text-catalog-name-${docId}`}
+          <ScrollArea className="h-[400px]">
+            {filteredCards.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <Search className="h-16 w-16 text-muted-foreground/40 mb-4" />
+                <h3 className="text-lg font-semibold text-muted-foreground">
+                  No cards found
+                </h3>
+                <p className="text-sm text-muted-foreground/70 mt-1">
+                  Try adjusting your search or filters.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {filteredCards.map((card, i) => {
+                  const suffix = card.is_alt_art ? "alt" : "standard";
+                  const docId = `${card.card_id}-${suffix}`;
+                  const isInCollection = scannedIds.has(docId);
+                  const isAdding = addingId === docId;
+
+                  return (
+                    <div
+                      key={`${docId}-${i}`}
+                      className={`flex items-center gap-3 p-3 rounded-md border transition-colors ${
+                        isInCollection
+                          ? "bg-primary/5 border-primary/20"
+                          : "bg-card"
+                      }`}
+                      data-testid={`card-catalog-${docId}`}
                     >
-                      {card.name}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <Badge
-                        className={`text-xs ${getRarityClass(card.rarity)}`}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-sm font-semibold">
+                            {card.card_id}
+                          </span>
+                          {card.is_alt_art && (
+                            <Badge variant="outline" className="text-xs">
+                              ALT
+                            </Badge>
+                          )}
+                          {isInCollection && (
+                            <Check className="h-4 w-4 text-primary" />
+                          )}
+                        </div>
+                        <p
+                          className="text-sm truncate mt-0.5"
+                          data-testid={`text-catalog-name-${docId}`}
+                        >
+                          {card.name}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <Badge
+                            className={`text-xs ${getRarityClass(card.rarity)}`}
+                          >
+                            {card.rarity}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {card.type}
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        size="icon"
+                        variant={isInCollection ? "secondary" : "default"}
+                        onClick={() => handleAddToCollection(card)}
+                        disabled={isAdding}
+                        data-testid={`button-add-${docId}`}
                       >
-                        {card.rarity}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {card.type}
-                      </span>
+                        {isAdding ? (
+                          <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
+                        ) : (
+                          <Plus className="h-4 w-4" />
+                        )}
+                      </Button>
                     </div>
-                  </div>
-                  <Button
-                    size="icon"
-                    variant={isInCollection ? "secondary" : "default"}
-                    onClick={() => handleAddToCollection(card)}
-                    disabled={isAdding}
-                    data-testid={`button-add-${docId}`}
-                  >
-                    {isAdding ? (
-                      <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
-                    ) : (
-                      <Plus className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </ScrollArea>
+                  );
+                })}
+              </div>
+            )}
+          </ScrollArea>
+        </CardContent>
+      </Card>
     </div>
   );
 }
