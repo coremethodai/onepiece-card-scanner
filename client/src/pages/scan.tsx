@@ -16,6 +16,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import {
@@ -29,6 +36,7 @@ import {
   Upload,
   Loader2,
   ImageIcon,
+  Layers,
 } from "lucide-react";
 
 const RARITY_COLORS: Record<string, string> = {
@@ -62,6 +70,7 @@ export default function Scan() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRarity, setSelectedRarity] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<string | null>(null);
+  const [selectedSet, setSelectedSet] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [addingId, setAddingId] = useState<string | null>(null);
 
@@ -206,6 +215,10 @@ export default function Scan() {
     if (cameraInputRef.current) cameraInputRef.current.value = "";
   };
 
+  const availableSets = Array.from(
+    new Set(catalogCards.map((c) => c.set_name).filter(Boolean))
+  ).sort() as string[];
+
   const filteredCards = catalogCards.filter((card) => {
     const matchesSearch =
       !searchQuery ||
@@ -213,7 +226,8 @@ export default function Scan() {
       card.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRarity = !selectedRarity || card.rarity === selectedRarity;
     const matchesType = !selectedType || card.type === selectedType;
-    return matchesSearch && matchesRarity && matchesType;
+    const matchesSet = !selectedSet || card.set_name === selectedSet;
+    return matchesSearch && matchesRarity && matchesType && matchesSet;
   });
 
   const handleAddToCollection = useCallback(
@@ -268,9 +282,10 @@ export default function Scan() {
     setSearchQuery("");
     setSelectedRarity(null);
     setSelectedType(null);
+    setSelectedSet(null);
   };
 
-  const hasFilters = searchQuery || selectedRarity || selectedType;
+  const hasFilters = searchQuery || selectedRarity || selectedType || selectedSet;
 
   if (loading) {
     return (
@@ -535,16 +550,40 @@ export default function Scan() {
                 {t}
               </Badge>
             ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Layers className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground mr-1">Set:</span>
+            <Select
+              value={selectedSet || "all"}
+              onValueChange={(val) => setSelectedSet(val === "all" ? null : val)}
+            >
+              <SelectTrigger
+                className="w-[260px] h-9"
+                data-testid="select-set"
+              >
+                <SelectValue placeholder="All Sets" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Sets</SelectItem>
+                {availableSets.map((setName) => (
+                  <SelectItem key={setName} value={setName}>
+                    {setName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {hasFilters && (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={clearFilters}
-                className="ml-2"
+                className="ml-auto"
                 data-testid="button-clear-filters"
               >
                 <X className="h-3 w-3 mr-1" />
-                Clear
+                Clear All
               </Button>
             )}
           </div>
@@ -555,6 +594,11 @@ export default function Scan() {
               data-testid="text-results-count"
             >
               Showing {filteredCards.length} of {catalogCards.length} cards
+              {selectedSet && (
+                <span className="ml-1 font-medium text-foreground">
+                  in {selectedSet}
+                </span>
+              )}
             </p>
           </div>
 
