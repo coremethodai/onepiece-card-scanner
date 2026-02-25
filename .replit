@@ -37,3 +37,13 @@ author = "agent"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[userenv]
+
+[userenv.shared]
+VITE_FIREBASE_API_KEY = "AIzaSyDDdDL8F2-oZTA4RCE9LbvwWVOqYUg9vdg"
+VITE_FIREBASE_AUTH_DOMAIN = "one-piece-scanner-63647.firebaseapp.com"
+VITE_FIREBASE_PROJECT_ID = "one-piece-scanner-63647"
+VITE_FIREBASE_STORAGE_BUCKET = "one-piece-scanner-63647.firebasestorage.app"
+VITE_FIREBASE_MESSAGING_SENDER_ID = "778710341132"
+VITE_FIREBASE_APP_ID = "1:778710341132:web:09c13b9d2385b3606bc029"
