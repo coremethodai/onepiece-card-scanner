@@ -42,6 +42,7 @@ import {
   LayoutGrid,
   Save,
   Trash2,
+  DollarSign,
 } from "lucide-react";
 
 const RARITY_COLORS: Record<string, string> = {
@@ -67,6 +68,8 @@ interface ScanResult {
   rarity: string;
   type: string;
   is_alt_art: boolean;
+  current_price?: number | null;
+  lowest_price?: number | null;
 }
 
 interface BatchResponse {
@@ -221,10 +224,16 @@ export default function Scan() {
           description: `Added another copy of ${scanResult.name} (${scanResult.card_id})`,
         });
       } else {
+        const { current_price, lowest_price, ...cardFields } = scanResult;
         const scannedCard: ScannedCard = {
-          ...scanResult,
+          ...cardFields,
           scanned_at: new Date().toISOString(),
           quantity: 1,
+          ...(current_price != null ? {
+            current_price,
+            lowest_price: lowest_price ?? null,
+            last_updated: new Date().toISOString(),
+          } : {}),
         };
         await setDoc(docRef, scannedCard);
         setScannedIds((prev) => {
@@ -345,10 +354,16 @@ export default function Scan() {
         if (existing.exists()) {
           batch.update(docRef, { quantity: increment(count) });
         } else {
+          const { current_price, lowest_price, ...cardFields } = card;
           const scannedCard: ScannedCard = {
-            ...card,
+            ...cardFields,
             scanned_at: new Date().toISOString(),
             quantity: count,
+            ...(current_price != null ? {
+              current_price,
+              lowest_price: lowest_price ?? null,
+              last_updated: new Date().toISOString(),
+            } : {}),
           };
           batch.set(docRef, scannedCard);
           newIds.push(docId);
@@ -400,10 +415,16 @@ export default function Scan() {
             description: `Added another copy of ${card.name} (${card.card_id})`,
           });
         } else {
+          const { current_price, lowest_price, ...cardFields } = card;
           const scannedCard: ScannedCard = {
-            ...card,
+            ...cardFields,
             scanned_at: new Date().toISOString(),
             quantity: 1,
+            ...(current_price != null ? {
+              current_price,
+              lowest_price: lowest_price ?? null,
+              last_updated: new Date().toISOString(),
+            } : {}),
           };
           await setDoc(docRef, scannedCard);
           setScannedIds((prev) => {
@@ -699,6 +720,15 @@ export default function Scan() {
                                 {scanResult.type}
                               </span>
                             </div>
+                            {scanResult.current_price != null && (
+                              <div className="flex items-center gap-2 mt-1" data-testid="scan-result-price">
+                                <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
+                                <span className="text-base font-bold text-green-600 dark:text-green-400">
+                                  ${scanResult.current_price.toFixed(2)}
+                                </span>
+                                <span className="text-xs text-muted-foreground">market price</span>
+                              </div>
+                            )}
                           </div>
                           <Button
                             onClick={handleAddScanResult}
@@ -1014,6 +1044,15 @@ export default function Scan() {
                               >
                                 {card.type}
                               </span>
+                              {card.current_price != null && (
+                                <span
+                                  className="text-xs font-bold ml-auto"
+                                  style={{ color: "#4ade80" }}
+                                  data-testid={`batch-price-${index}`}
+                                >
+                                  ${card.current_price.toFixed(2)}
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-2 pt-1">
                               <Button

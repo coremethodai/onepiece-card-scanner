@@ -21,7 +21,7 @@ service cloud.firestore {
         ])
         && request.resource.data.keys().hasOnly([
           'card_id', 'name', 'rarity', 'type', 'is_alt_art', 'scanned_at', 'quantity',
-          'alt_art_number', 'set_name'
+          'alt_art_number', 'set_name', 'current_price', 'lowest_price', 'last_updated'
         ])
         && request.resource.data.card_id is string
         && request.resource.data.name is string
@@ -31,7 +31,10 @@ service cloud.firestore {
         && request.resource.data.scanned_at is string
         && request.resource.data.quantity is int
         && (!('alt_art_number' in request.resource.data) || request.resource.data.alt_art_number is int)
-        && (!('set_name' in request.resource.data) || request.resource.data.set_name is string);
+        && (!('set_name' in request.resource.data) || request.resource.data.set_name is string)
+        && (!('current_price' in request.resource.data) || request.resource.data.current_price is number)
+        && (!('lowest_price' in request.resource.data) || request.resource.data.lowest_price is number || request.resource.data.lowest_price == null)
+        && (!('last_updated' in request.resource.data) || request.resource.data.last_updated is string);
 
       allow update: if
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([

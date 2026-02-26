@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { detectAndCropCards } from "./batchDetect";
+import { scrapePrice } from "./jobs/scrapePrice";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || "");
 
@@ -49,6 +50,26 @@ Return a JSON array with one entry per image, in the same order. If a card canno
 Respond ONLY with a valid JSON array, no markdown or extra text:
 [{"card_id": "...", "name": "...", "rarity": "...", "type": "...", "is_alt_art": false}, ...]`;
 
+async function enrichWithPrice(card: { card_id: string; name: string; [key: string]: any }) {
+  try {
+    const priceData = await scrapePrice(card.card_id, card.name);
+    if (priceData.marketPrice !== null) {
+      return {
+        ...card,
+        current_price: priceData.marketPrice,
+        lowest_price: priceData.lowestPrice,
+      };
+    }
+  } catch (err: any) {
+    console.log(`Price lookup failed for ${card.card_id}: ${err.message}`);
+  }
+  return { ...card, current_price: null, lowest_price: null };
+}
+
+async function enrichCardsWithPrices(cards: any[]): Promise<any[]> {
+  return Promise.all(cards.map((card) => enrichWithPrice(card)));
+}
+
 async function identifySingleCard(
   base64Data: string,
   mimeType: string = "image/jpeg"
@@ -91,7 +112,8 @@ export async function registerRoutes(
         return res.status(422).json({ error: cardData.error });
       }
 
-      return res.json(cardData);
+      const enriched = await enrichWithPrice(cardData);
+      return res.json(enriched);
     } catch (error: any) {
       console.error("Scan error:", error.message);
       const msg = error.message?.includes("404")
@@ -154,9 +176,10 @@ export async function registerRoutes(
             }
 
             if (validCards.length > 0) {
+              const pricedCards = await enrichCardsWithPrices(validCards.slice(0, 20));
               return res.json({
-                cards: validCards.slice(0, 20),
-                count: validCards.length,
+                cards: pricedCards,
+                count: pricedCards.length,
                 method: "cv",
                 totalDetected: croppedCards.length,
                 failedCount,
@@ -195,11 +218,12 @@ export async function registerRoutes(
         .filter((c: any) => c.card_id && c.name)
         .slice(0, 20);
 
+      const pricedCards = await enrichCardsWithPrices(validCards);
       return res.json({
-        cards: validCards,
-        count: validCards.length,
+        cards: pricedCards,
+        count: pricedCards.length,
         method: "ai",
-        totalDetected: validCards.length,
+        totalDetected: pricedCards.length,
         failedCount: 0,
       });
     } catch (error: any) {
