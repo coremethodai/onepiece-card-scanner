@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import imageCompression from "browser-image-compression";
 import {
   collection,
   getDocs,
@@ -78,6 +79,22 @@ interface BatchResponse {
 
 type ScanMode = "single" | "batch";
 
+const COMPRESSION_OPTIONS = {
+  maxSizeMB: 1.5,
+  maxWidthOrHeight: 1920,
+  useWebWorker: true,
+};
+
+async function compressAndConvert(file: File): Promise<string> {
+  const compressed = await imageCompression(file, COMPRESSION_OPTIONS);
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => resolve(ev.target?.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(compressed);
+  });
+}
+
 export default function Scan() {
   const [catalogCards, setCatalogCards] = useState<CatalogCard[]>([]);
   const [scannedIds, setScannedIds] = useState<Set<string>>(new Set());
@@ -143,19 +160,21 @@ export default function Scan() {
   }, []);
 
   const handleImageSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
 
       setScanResult(null);
       setScanError(null);
 
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const dataUrl = ev.target?.result as string;
+      try {
+        const dataUrl = await compressAndConvert(file);
         setPreviewImage(dataUrl);
-      };
-      reader.readAsDataURL(file);
+      } catch {
+        const reader = new FileReader();
+        reader.onload = (ev) => setPreviewImage(ev.target?.result as string);
+        reader.readAsDataURL(file);
+      }
     },
     []
   );
@@ -242,19 +261,21 @@ export default function Scan() {
   };
 
   const handleBatchImageSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
 
       setBatchResults([]);
       setBatchError(null);
 
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const dataUrl = ev.target?.result as string;
+      try {
+        const dataUrl = await compressAndConvert(file);
         setBatchPreviewImage(dataUrl);
-      };
-      reader.readAsDataURL(file);
+      } catch {
+        const reader = new FileReader();
+        reader.onload = (ev) => setBatchPreviewImage(ev.target?.result as string);
+        reader.readAsDataURL(file);
+      }
     },
     []
   );

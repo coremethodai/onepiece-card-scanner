@@ -35,6 +35,20 @@ Respond ONLY with a valid JSON array, no markdown or extra text:
 If you cannot identify any cards, respond with:
 []`;
 
+const GROUPED_CARDS_PROMPT = `You are an expert One Piece Trading Card Game identifier. You are given multiple individual card images. Identify each card image in the order they appear.
+
+For each card, extract:
+1. card_id - The card number printed on the card (e.g., "EB04-012", "OP01-025", "ST01-012")
+2. name - The character or card name
+3. rarity - The rarity symbol (C, UC, R, SR, SEC, L, SP)
+4. type - The card type (CHARACTER, EVENT, STAGE, LEADER)
+5. is_alt_art - Whether this appears to be an alternate/parallel art version (true/false)
+
+Return a JSON array with one entry per image, in the same order. If a card cannot be identified, use null for that position.
+
+Respond ONLY with a valid JSON array, no markdown or extra text:
+[{"card_id": "...", "name": "...", "rarity": "...", "type": "...", "is_alt_art": false}, ...]`;
+
 async function identifySingleCard(
   base64Data: string,
   mimeType: string = "image/jpeg"
@@ -101,48 +115,59 @@ export async function registerRoutes(
       let croppedCards = await detectAndCropCards(image);
 
       if (croppedCards && croppedCards.length > 1) {
-        console.log(`CV detected ${croppedCards.length} card(s), identifying each...`);
+        console.log(`CV detected ${croppedCards.length} card(s), sending grouped Gemini call...`);
 
-        const results = await Promise.all(
-          croppedCards.map(async (card, index) => {
-            try {
-              const cardData = await identifySingleCard(card.base64, "image/jpeg");
-              if (cardData.error) {
-                console.log(`Card ${index} identification returned error: ${cardData.error}`);
-                return { ...cardData, _index: index, _failed: true };
+        try {
+          const imageParts = croppedCards.map((card) => ({
+            inlineData: {
+              data: card.base64,
+              mimeType: "image/jpeg",
+            },
+          }));
+
+          const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+          const result = await model.generateContent([
+            ...imageParts,
+            { text: GROUPED_CARDS_PROMPT },
+          ]);
+
+          const responseText = result.response.text().trim();
+          const jsonStr = responseText.replace(/```json\n?|\n?```/g, "").trim();
+          const cardsArray = JSON.parse(jsonStr);
+
+          if (Array.isArray(cardsArray)) {
+            const validCards: any[] = [];
+            let failedCount = 0;
+            for (let i = 0; i < croppedCards.length; i++) {
+              const c = cardsArray[i];
+              if (c && c.card_id && c.name) {
+                validCards.push({
+                  card_id: c.card_id,
+                  name: c.name,
+                  rarity: c.rarity || "",
+                  type: c.type || "",
+                  is_alt_art: c.is_alt_art || false,
+                });
+              } else {
+                failedCount++;
               }
-              return { ...cardData, _index: index, _failed: false };
-            } catch (err: any) {
-              console.error(`Failed to identify card ${index}:`, err.message);
-              return {
-                card_id: "",
-                name: "Unknown",
-                rarity: "",
-                type: "",
-                is_alt_art: false,
-                error: "Failed to identify",
-                _index: index,
-                _failed: true,
-              };
             }
-          })
-        );
 
-        const successfulCards = results
-          .filter((r) => !r._failed)
-          .map(({ _index, _failed, ...card }) => card);
-
-        if (successfulCards.length > 0) {
-          return res.json({
-            cards: successfulCards,
-            count: successfulCards.length,
-            method: "cv",
-            totalDetected: croppedCards.length,
-            failedCount: results.length - successfulCards.length,
-          });
+            if (validCards.length > 0) {
+              return res.json({
+                cards: validCards.slice(0, 20),
+                count: validCards.length,
+                method: "cv",
+                totalDetected: croppedCards.length,
+                failedCount,
+              });
+            }
+          }
+        } catch (err: any) {
+          console.error("Grouped Gemini call failed:", err.message);
         }
 
-        console.log("All CV-detected cards failed identification, falling back to AI-native...");
+        console.log("Grouped CV identification failed, falling back to AI-native...");
       }
 
       console.log("Using AI-native batch detection...");

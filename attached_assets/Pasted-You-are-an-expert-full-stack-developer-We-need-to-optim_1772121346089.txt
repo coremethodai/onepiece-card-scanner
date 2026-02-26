@@ -1,0 +1,29 @@
+You are an expert full-stack developer. We need to optimize the speed and reliability of our One Piece Card Scanner application, specifically for the bulk upload feature. Currently, the app struggles with large image sizes and multiple separate AI calls.
+
+Please implement the following two major optimizations:
+
+### Step 1: Client-Side Image Compression
+We need to shrink images on the client side before they are sent to the backend to prevent high latency and out-of-memory errors.
+
+1. Install the `browser-image-compression` package for the frontend.
+2. Locate the file handling the image upload/camera capture for batch scanning (likely `client/src/pages/scan.tsx` or a related component).
+3. Import `browser-image-compression`.
+4. Update the image upload handler. Before converting the file to Base64 to send to our Express backend, compress it using these options:
+   - `maxSizeMB: 1.5`
+   - `maxWidthOrHeight: 1920`
+   - `useWebWorker: true`
+5. Convert the resulting compressed file to Base64 and send it to the backend exactly as the existing implementation does, ensuring no existing frontend UI or state logic breaks.
+
+### Step 2: Grouping Gemini API Calls for Batch Processing
+Currently, the backend likely makes separate calls to Gemini for each cropped card image it detects via `sharp`. We want to leverage Gemini 2.5 Flash's large multimodal context to identify all cropped cards in a *single* API call.
+
+1. Locate the batch scanning logic on the backend (check `server/routes.ts` and `server/batchDetect.ts`).
+2. Update the logic that executes after the `sharp` CV pipeline extracts the array of cropped card image buffers.
+3. Instead of looping and calling the Gemini API sequentially or via Promise.all for each image, map the array of cropped buffers into a single array of `inlineData` objects for Gemini:
+   ```javascript
+   const imageParts = croppedBuffers.map(buffer => ({
+       inlineData: {
+           data: buffer.toString("base64"),
+           mimeType: "image/jpeg"
+       }
+   }));

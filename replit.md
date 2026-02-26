@@ -35,6 +35,8 @@ A web application for One Piece trading cards with AI-powered card scanning (sin
 ## Batch Scanning
 - Two detection methods: CV pipeline (sharp-based contour detection) and AI-native (Gemini identifies all cards in one call)
 - CV is used when >1 card region detected; falls back to AI-native if CV fails or finds ≤1 region
+- **Optimization**: CV-detected card images are sent to Gemini in a single grouped API call (all images as inlineData parts) instead of separate calls per card
+- **Client-side compression**: Images are compressed before upload using `browser-image-compression` (maxSizeMB: 1.5, maxWidthOrHeight: 1920, useWebWorker: true)
 - Frontend uses glassmorphism UI with neon purple/blue accents for batch mode
 - Batch save uses Firestore `writeBatch()` for atomic writes
 
