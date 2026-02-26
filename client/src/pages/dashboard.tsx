@@ -12,6 +12,9 @@ import {
   Star,
   Sparkles,
   Package,
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 
 const RARITY_COLORS: Record<string, string> = {
@@ -81,6 +84,12 @@ export default function Dashboard() {
     rarityCounts[c.rarity] = (rarityCounts[c.rarity] || 0) + 1;
     typeCounts[c.type] = (typeCounts[c.type] || 0) + 1;
   });
+
+  const totalValue = scannedCards.reduce((sum, c) => {
+    const price = c.current_price ?? 0;
+    return sum + price * c.quantity;
+  }, 0);
+  const cardsWithPrices = scannedCards.filter((c) => c.current_price != null).length;
 
   if (loading) {
     return (
@@ -159,19 +168,19 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card data-testid="card-stat-alt-arts">
+        <Card data-testid="card-stat-value">
           <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Alt Arts Collected
+              Collection Value
             </CardTitle>
-            <Sparkles className="h-4 w-4 text-muted-foreground" />
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold" data-testid="text-alt-count">
-              {scannedCards.filter((c) => c.is_alt_art).length}
+            <div className="text-3xl font-bold" data-testid="text-collection-value">
+              ${totalValue.toFixed(2)}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              alternate art variants
+              {cardsWithPrices} of {totalScanned} cards priced
             </p>
           </CardContent>
         </Card>
@@ -233,11 +242,36 @@ export default function Dashboard() {
                         </span>
                       </div>
                     </div>
-                    {card.quantity > 1 && (
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary text-sm font-bold">
-                        x{card.quantity}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {card.current_price != null ? (
+                        <div className="text-right" data-testid={`price-${card.card_id}-${i}`}>
+                          <div className="text-sm font-semibold text-green-600 dark:text-green-400">
+                            ${card.current_price.toFixed(2)}
+                          </div>
+                          {card.previous_price != null && card.previous_price !== card.current_price && (
+                            <div className="flex items-center gap-0.5 justify-end">
+                              {card.current_price > card.previous_price ? (
+                                <TrendingUp className="h-3 w-3 text-green-500" />
+                              ) : (
+                                <TrendingDown className="h-3 w-3 text-red-500" />
+                              )}
+                              <span className={`text-[10px] ${card.current_price > card.previous_price ? "text-green-500" : "text-red-500"}`}>
+                                ${card.previous_price.toFixed(2)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/50" data-testid={`price-na-${card.card_id}-${i}`}>
+                          --
+                        </span>
+                      )}
+                      {card.quantity > 1 && (
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary text-sm font-bold">
+                          x{card.quantity}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

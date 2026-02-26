@@ -18,4 +18,8 @@ export interface ScannedCard {
   set_name?: string;
   scanned_at: string;
   quantity: number;
+  current_price?: number | null;
+  previous_price?: number | null;
+  lowest_price?: number | null;
+  last_updated?: string | null;
 }
