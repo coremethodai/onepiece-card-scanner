@@ -1,17 +1,18 @@
 # One Piece Card Scanner
 
 ## Project Overview
-A web application for One Piece trading cards with AI-powered card scanning (single and batch), a catalog scraper, a collection dashboard, and manual card browsing/adding.
+A web application for One Piece trading cards with AI-powered card scanning (single and batch), a catalog scraper, a collection dashboard, manual card browsing/adding, and automated TCGPlayer price tracking.
 
 ## Architecture
 - **Frontend**: React + Vite + TailwindCSS + shadcn/ui
 - **Backend**: Express.js with Google Gemini AI integration
 - **Database**: Firebase Firestore
   - `Official_Catalog` — scraped card data from official site
-  - `My_Collection` — user's scanned/collected cards
+  - `My_Collection` — user's scanned/collected cards (with price data)
 - **AI**: Google Gemini 2.5 Flash for card image recognition
 - **Image Processing**: sharp (used for batch card detection via CV)
-- **Scraper**: Standalone Node.js script
+- **Price Scraper**: TCGPlayer market price scraper via their search API
+- **Catalog Scraper**: Standalone Node.js script for official card data
 
 ## Key Files
 - `client/src/App.tsx` — Main app with routing and sidebar/mobile nav
@@ -22,7 +23,9 @@ A web application for One Piece trading cards with AI-powered card scanning (sin
 - `server/routes.ts` — API routes: POST /api/scan-card, POST /api/scan-batch
 - `server/batchDetect.ts` — CV-based card detection using sharp (grayscale → threshold → connected-component labeling → crop)
 - `server/index.ts` — Express server entry point (50mb JSON limit for batch images)
-- `server/scrapeCatalog.js` — Standalone scraper script
+- `server/scrapeCatalog.js` — Standalone catalog scraper script
+- `server/jobs/scrapePrice.ts` — TCGPlayer price scraper utility (uses their search API, no headless browser needed)
+- `server/jobs/updatePrices.ts` — Standalone cron job script: fetches My_Collection cards, scrapes prices sequentially with random delays (3-8s), updates Firestore
 - `shared/schema.ts` — Shared data types
 
 ## API Endpoints
@@ -35,6 +38,14 @@ A web application for One Piece trading cards with AI-powered card scanning (sin
 - Frontend uses glassmorphism UI with neon purple/blue accents for batch mode
 - Batch save uses Firestore `writeBatch()` for atomic writes
 
+## Price Tracking
+- `server/jobs/updatePrices.ts` — standalone script for scheduled execution
+- Uses TCGPlayer's search API (`mp-search-api.tcgplayer.com`) — no headless browser needed
+- Sequential card processing with 3-8 second random delays to avoid IP blocking
+- Updates: `current_price`, `previous_price`, `lowest_price`, `last_updated` fields
+- Run manually: `npx tsx server/jobs/updatePrices.ts`
+- Exits with `process.exit(0)` for Replit Scheduled Deployments compatibility
+
 ## Environment Variables
 ### Secrets
 - `FIREBASE_API_KEY`, `FIREBASE_AUTH_DOMAIN`, `FIREBASE_PROJECT_ID`
@@ -45,16 +56,20 @@ A web application for One Piece trading cards with AI-powered card scanning (sin
 ### Environment Vars (shared)
 - `VITE_FIREBASE_*` — Frontend Firebase config vars
 
-## Running the Scraper
+## Running Scripts
 ```bash
+# Run catalog scraper
 node server/scrapeCatalog.js
+
+# Run price updater (for cron/scheduled deployment)
+npx tsx server/jobs/updatePrices.ts
 ```
 
 ## Firestore Security Rules
 - `firestore.rules` — defines access control for Firestore collections
 - `firebase.json` — Firebase config pointing to the rules file
 - **Official_Catalog**: read-only from client; writes only via Admin SDK (scraper)
-- **My_Collection**: read allowed; create validated (7 required fields, 2 optional); update limited to `quantity` only; delete denied
+- **My_Collection**: read allowed; create validated (7 required fields, 2 optional); update allows `quantity`, `current_price`, `previous_price`, `lowest_price`, `last_updated`; delete denied
 - Deploy rules via: `firebase deploy --only firestore:rules` (requires Firebase CLI)
 
 ## Firestore Document IDs

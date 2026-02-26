@@ -34,8 +34,14 @@ service cloud.firestore {
         && (!('set_name' in request.resource.data) || request.resource.data.set_name is string);
 
       allow update: if
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['quantity'])
-        && request.resource.data.quantity is int;
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'quantity', 'current_price', 'previous_price', 'lowest_price', 'last_updated'
+        ])
+        && request.resource.data.quantity is int
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['current_price']) || request.resource.data.current_price is number)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['previous_price']) || request.resource.data.previous_price is number || request.resource.data.previous_price == null)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['lowest_price']) || request.resource.data.lowest_price is number || request.resource.data.lowest_price == null)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['last_updated']) || request.resource.data.last_updated is string);
 
       allow delete: if false;
     }
