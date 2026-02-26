@@ -1,0 +1,43 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /Official_Catalog/{cardId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /My_Collection/{cardId} {
+      allow read: if true;
+
+      allow create: if
+        request.resource.data.keys().hasAll([
+          'card_id', 'name', 'rarity', 'type', 'is_alt_art', 'scanned_at', 'quantity'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'card_id', 'name', 'rarity', 'type', 'is_alt_art', 'scanned_at', 'quantity',
+          'alt_art_number', 'set_name'
+        ])
+        && request.resource.data.card_id is string
+        && request.resource.data.name is string
+        && request.resource.data.rarity is string
+        && request.resource.data.type is string
+        && request.resource.data.is_alt_art is bool
+        && request.resource.data.scanned_at is string
+        && request.resource.data.quantity is int
+        && (!('alt_art_number' in request.resource.data) || request.resource.data.alt_art_number is int)
+        && (!('set_name' in request.resource.data) || request.resource.data.set_name is string);
+
+      allow update: if
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['quantity'])
+        && request.resource.data.quantity is int;
+
+      allow delete: if false;
+    }
+  }
+}

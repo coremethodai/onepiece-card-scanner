@@ -50,6 +50,13 @@ A web application for One Piece trading cards with AI-powered card scanning (sin
 node server/scrapeCatalog.js
 ```
 
+## Firestore Security Rules
+- `firestore.rules` — defines access control for Firestore collections
+- `firebase.json` — Firebase config pointing to the rules file
+- **Official_Catalog**: read-only from client; writes only via Admin SDK (scraper)
+- **My_Collection**: read allowed; create validated (7 required fields, 2 optional); update limited to `quantity` only; delete denied
+- Deploy rules via: `firebase deploy --only firestore:rules` (requires Firebase CLI)
+
 ## Firestore Document IDs
 Pattern: `{card_id}-standard`, `{card_id}-alt`, `{card_id}-alt2`, `{card_id}-alt3`
 
