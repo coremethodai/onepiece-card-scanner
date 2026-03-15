@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SalesHistoryModal } from "@/components/ui/sales-history-modal";
 import {
   LayoutDashboard,
   Layers,
@@ -15,6 +16,7 @@ import {
   DollarSign,
   TrendingUp,
   TrendingDown,
+  ShoppingCart,
 } from "lucide-react";
 
 const RARITY_COLORS: Record<string, string> = {
@@ -42,6 +44,8 @@ export default function Dashboard() {
   const [scannedCards, setScannedCards] = useState<ScannedCard[]>([]);
   const [catalogCards, setCatalogCards] = useState<CatalogCard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [salesModalOpen, setSalesModalOpen] = useState(false);
+  const [selectedCard, setSelectedCard] = useState<ScannedCard | null>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -244,10 +248,26 @@ export default function Dashboard() {
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {card.current_price != null ? (
-                        <div className="text-right" data-testid={`price-${card.card_id}-${i}`}>
+                        <div
+                          className="text-right cursor-pointer hover:opacity-80 transition-opacity"
+                          data-testid={`price-${card.card_id}-${i}`}
+                          onClick={() => {
+                            setSelectedCard(card);
+                            setSalesModalOpen(true);
+                          }}
+                          title="Click to view sales history"
+                        >
                           <div className="text-sm font-semibold text-green-600 dark:text-green-400">
                             ${card.current_price.toFixed(2)}
                           </div>
+                          {card.most_recent_sale != null && card.most_recent_sale !== card.current_price && (
+                            <div className="flex items-center gap-0.5 justify-end">
+                              <ShoppingCart className="h-3 w-3 text-blue-500" />
+                              <span className="text-[10px] text-blue-500" title="Most recent sold price">
+                                ${card.most_recent_sale.toFixed(2)}
+                              </span>
+                            </div>
+                          )}
                           {card.previous_price != null && card.previous_price !== card.current_price && (
                             <div className="flex items-center gap-0.5 justify-end">
                               {card.current_price > card.previous_price ? (
@@ -279,6 +299,16 @@ export default function Dashboard() {
           )}
         </CardContent>
       </Card>
+      {selectedCard && (
+        <SalesHistoryModal
+          open={salesModalOpen}
+          onOpenChange={setSalesModalOpen}
+          cardName={selectedCard.name}
+          cardId={selectedCard.card_id}
+          tcgProductId={selectedCard.tcg_product_id}
+          marketPrice={selectedCard.current_price}
+        />
+      )}
     </div>
   );
 }

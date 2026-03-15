@@ -107,6 +107,8 @@ async function main() {
         current_price: result.marketPrice,
         previous_price: currentPrice,
         lowest_price: newLowest,
+        most_recent_sale: result.mostRecentSale ?? null,
+        tcg_product_id: result.productId ?? null,
         last_updated: timestamp(),
       };
 

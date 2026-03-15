@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { detectAndCropCards } from "./batchDetect";
 import { scrapePrice } from "./jobs/scrapePrice";
+import { fetchLatestSales, resolveProductId } from "./jobs/fetchSalesHistory";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || "");
 
@@ -58,12 +59,14 @@ async function enrichWithPrice(card: { card_id: string; name: string; [key: stri
         ...card,
         current_price: priceData.marketPrice,
         lowest_price: priceData.lowestPrice,
+        most_recent_sale: priceData.mostRecentSale,
+        tcg_product_id: priceData.productId,
       };
     }
   } catch (err: any) {
     console.log(`Price lookup failed for ${card.card_id}: ${err.message}`);
   }
-  return { ...card, current_price: null, lowest_price: null };
+  return { ...card, current_price: null, lowest_price: null, most_recent_sale: null, tcg_product_id: null };
 }
 
 async function enrichCardsWithPrices(cards: any[]): Promise<any[]> {
@@ -232,6 +235,63 @@ export async function registerRoutes(
         ? "AI model unavailable. Please try again shortly."
         : "Failed to analyze batch image. Please try again.";
       return res.status(500).json({ error: msg });
+    }
+  });
+
+  // ── Market Data API ─────────────────────────────────────────────────────
+  // Fetch recent sales history for a TCGPlayer product by product ID
+  app.get("/api/market-data/:productId", async (req, res) => {
+    try {
+      const { productId } = req.params;
+      const limit = Math.min(parseInt(req.query.limit as string) || 10, 25);
+
+      if (!productId || !/^\d+$/.test(productId)) {
+        return res.status(400).json({ error: "Invalid product ID" });
+      }
+
+      const salesResult = await fetchLatestSales(productId, limit);
+
+      if (salesResult.error) {
+        return res.status(502).json({ error: salesResult.error });
+      }
+
+      return res.json({
+        productId,
+        mostRecentSale: salesResult.mostRecentSale,
+        recentSales: salesResult.recentSales,
+        count: salesResult.recentSales.length,
+      });
+    } catch (error: any) {
+      console.error("Market data error:", error.message);
+      return res.status(500).json({ error: "Failed to fetch market data" });
+    }
+  });
+
+  // Resolve a card ID + name to a TCGPlayer product ID, then fetch sales
+  app.get("/api/market-data/resolve/:cardId", async (req, res) => {
+    try {
+      const { cardId } = req.params;
+      const cardName = (req.query.name as string) || "";
+      const limit = Math.min(parseInt(req.query.limit as string) || 10, 25);
+
+      const productId = await resolveProductId(cardId, cardName);
+
+      if (!productId) {
+        return res.status(404).json({ error: "Could not find TCGPlayer product" });
+      }
+
+      const salesResult = await fetchLatestSales(productId, limit);
+
+      return res.json({
+        productId,
+        cardId,
+        mostRecentSale: salesResult.mostRecentSale,
+        recentSales: salesResult.recentSales,
+        count: salesResult.recentSales.length,
+      });
+    } catch (error: any) {
+      console.error("Market data resolve error:", error.message);
+      return res.status(500).json({ error: "Failed to resolve and fetch market data" });
     }
   });
 

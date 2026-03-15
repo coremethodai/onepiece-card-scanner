@@ -8,6 +8,16 @@ export interface CatalogCard {
   set_name?: string;
 }
 
+export interface SaleRecord {
+  purchasePrice: number;
+  shippingPrice: number;
+  orderDate: string;
+  condition: string;
+  quantity: number;
+  listingType?: string;
+  title?: string;
+}
+
 export interface ScannedCard {
   card_id: string;
   name: string;
@@ -21,5 +31,7 @@ export interface ScannedCard {
   current_price?: number | null;
   previous_price?: number | null;
   lowest_price?: number | null;
+  most_recent_sale?: number | null;
+  tcg_product_id?: string | null;
   last_updated?: string | null;
 }

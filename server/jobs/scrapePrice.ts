@@ -1,8 +1,11 @@
 import axios from "axios";
+import { fetchLatestSales } from "./fetchSalesHistory";
 
-interface PriceResult {
+export interface PriceResult {
   marketPrice: number | null;
   lowestPrice: number | null;
+  mostRecentSale: number | null;
+  productId: string | null;
   productName: string | null;
   tcgSetName: string | null;
   error?: string;
@@ -119,6 +122,8 @@ export async function scrapePrice(
       return {
         marketPrice: null,
         lowestPrice: null,
+        mostRecentSale: null,
+        productId: null,
         productName: null,
         tcgSetName: null,
       };
@@ -130,14 +135,31 @@ export async function scrapePrice(
       return {
         marketPrice: null,
         lowestPrice: null,
+        mostRecentSale: null,
+        productId: null,
         productName: results[0]?.productName || null,
         tcgSetName: results[0]?.setName || null,
       };
     }
 
+    // Fetch most recent actual sale price from the latestsales API
+    const matchProductId = match.productId ? String(match.productId) : null;
+    let mostRecentSale: number | null = null;
+
+    if (matchProductId) {
+      try {
+        const salesResult = await fetchLatestSales(matchProductId, 1);
+        mostRecentSale = salesResult.mostRecentSale;
+      } catch (err: any) {
+        console.log(`Sales history fetch failed for ${matchProductId}: ${err.message}`);
+      }
+    }
+
     return {
       marketPrice: match.marketPrice ?? null,
       lowestPrice: match.lowestPrice ?? null,
+      mostRecentSale,
+      productId: matchProductId,
       productName: match.productName || null,
       tcgSetName: match.setName || null,
     };
@@ -146,6 +168,8 @@ export async function scrapePrice(
       return {
         marketPrice: null,
         lowestPrice: null,
+        mostRecentSale: null,
+        productId: null,
         productName: null,
         tcgSetName: null,
         error: "Rate limited (429). Consider increasing delay between requests.",
@@ -155,6 +179,8 @@ export async function scrapePrice(
       return {
         marketPrice: null,
         lowestPrice: null,
+        mostRecentSale: null,
+        productId: null,
         productName: null,
         tcgSetName: null,
         error: "Access denied (403). IP may be temporarily blocked.",
@@ -163,6 +189,8 @@ export async function scrapePrice(
     return {
       marketPrice: null,
       lowestPrice: null,
+      mostRecentSale: null,
+      productId: null,
       productName: null,
       tcgSetName: null,
       error: `Scrape failed: ${error.message}`,
