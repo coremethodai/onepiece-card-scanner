@@ -347,7 +347,7 @@ export default function Scan() {
         }
       }
 
-      for (const [docId, { card, count }] of cardCounts) {
+      for (const [docId, { card, count }] of Array.from(cardCounts.entries())) {
         const docRef = doc(db, "My_Collection", docId);
         const existing = await getDoc(docRef);
 
